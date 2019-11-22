@@ -73,6 +73,11 @@ package object config {
     .stringConf
     .createWithDefault("default")
 
+  private[spark] val QUEUE_ENFORCER_CLASS = ConfigBuilder("spark.queue.enforcer.class")
+    .doc("Fully Qualified class name for concrete impl to be used to enforce queue")
+    .stringConf
+    .createWithDefault("org.apache.spark.deploy.yarn.propertymodifier.ReturnExistingQueue")
+
   private[spark] val HISTORY_SERVER_ADDRESS = ConfigBuilder("spark.yarn.historyServer.address")
     .stringConf
     .createOptional

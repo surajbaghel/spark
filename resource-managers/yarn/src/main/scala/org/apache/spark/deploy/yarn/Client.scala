@@ -29,7 +29,7 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, ListBuffer, Map}
 import scala.util.control.NonFatal
 
-import com.google.common.base.Objects
+import com.google.common.base.{Objects, Strings}
 import com.google.common.io.Files
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs._
@@ -50,6 +50,7 @@ import org.apache.hadoop.yarn.util.Records
 import org.apache.spark.{SecurityManager, SparkConf, SparkException}
 import org.apache.spark.deploy.{SparkApplication, SparkHadoopUtil}
 import org.apache.spark.deploy.yarn.config._
+import org.apache.spark.deploy.yarn.propertymodifier.QueueEnforcer
 import org.apache.spark.deploy.yarn.security.YARNHadoopDelegationTokenManager
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
@@ -227,6 +228,33 @@ private[spark] class Client(
     }
   }
 
+  private def getInitiator: String = {
+    var user: String = null
+    try {
+      user = JobInitiatorFetcher.getJobInitiator
+    } catch {
+      case e: Throwable =>
+        throw new RuntimeException("User couldn't be set due to " + e.getMessage)
+    }
+    user
+  }
+
+  @throws[IOException]
+  private def getEnforcedQueue(queue: String): String = {
+    log.info("default queue: " + queue)
+    val queueEnforcerClassName: String = sparkConf.get(QUEUE_ENFORCER_CLASS)
+    log.info("queue enforcer class: " + queueEnforcerClassName)
+    var queueEnforcer: QueueEnforcer = null
+    try {queueEnforcer = Utils.classForName(queueEnforcerClassName)
+      .newInstance.asInstanceOf[QueueEnforcer]
+    } catch {
+      case e: Throwable =>
+        throw new RuntimeException("Couldn't enforce queue due to " + e.getMessage)
+    }
+    log.info("enforced queue: " + queueEnforcer.getEnforcedQueue(queue, getInitiator, sparkConf))
+    queueEnforcer.getEnforcedQueue(queue, getInitiator, sparkConf)
+  }
+
   /**
    * Set up the context for submitting our ApplicationMaster.
    * This uses the YarnClientApplication not available in the Yarn alpha API.
@@ -236,7 +264,8 @@ private[spark] class Client(
       containerContext: ContainerLaunchContext): ApplicationSubmissionContext = {
     val appContext = newApp.getApplicationSubmissionContext
     appContext.setApplicationName(sparkConf.get("spark.app.name", "Spark"))
-    appContext.setQueue(sparkConf.get(QUEUE_NAME))
+    log.info("setting queue")
+    appContext.setQueue(getEnforcedQueue(sparkConf.get(QUEUE_NAME)))
     appContext.setAMContainerSpec(containerContext)
     appContext.setApplicationType("SPARK")
 
@@ -1172,6 +1201,21 @@ private[spark] class Client(
       }
   }
 
+}
+
+private object JobInitiatorFetcher {
+  val SUDO_USER_PROP_KEY = "SUDO_USER"
+  val USER = "USER"
+
+  @throws[IOException]
+  @throws[InterruptedException]
+  def getJobInitiator: String = {
+    val sudoUser = Option(System.getenv.get(SUDO_USER_PROP_KEY))
+    val user = Option(System.getenv.get(USER))
+    if (sudoUser.isDefined) return sudoUser.get
+    else if (user.isDefined) return user.get
+    null
+  }
 }
 
 private object Client extends Logging {
