@@ -234,7 +234,7 @@ private[spark] class Client(
       user = JobInitiatorFetcher.getJobInitiator
     } catch {
       case e: Throwable =>
-        throw new RuntimeException("User couldn't be set due to " + e.getMessage)
+        throw new RuntimeException("User couldn't be set. ", e)
     }
     user
   }
@@ -249,9 +249,8 @@ private[spark] class Client(
       .newInstance.asInstanceOf[QueueEnforcer]
     } catch {
       case e: Throwable =>
-        throw new RuntimeException("Couldn't enforce queue due to " + e.getMessage)
+        throw new RuntimeException("Couldn't enforce queue. ", e)
     }
-    log.info("enforced queue: " + queueEnforcer.getEnforcedQueue(queue, getInitiator, sparkConf))
     queueEnforcer.getEnforcedQueue(queue, getInitiator, sparkConf)
   }
 
@@ -264,7 +263,6 @@ private[spark] class Client(
       containerContext: ContainerLaunchContext): ApplicationSubmissionContext = {
     val appContext = newApp.getApplicationSubmissionContext
     appContext.setApplicationName(sparkConf.get("spark.app.name", "Spark"))
-    log.info("setting queue")
     appContext.setQueue(getEnforcedQueue(sparkConf.get(QUEUE_NAME)))
     appContext.setAMContainerSpec(containerContext)
     appContext.setApplicationType("SPARK")
