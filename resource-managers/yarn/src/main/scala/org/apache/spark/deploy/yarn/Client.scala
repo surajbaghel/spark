@@ -241,9 +241,13 @@ private[spark] class Client(
 
   @throws[IOException]
   private def getEnforcedQueue(queue: String): String = {
-    log.info("default queue: " + queue)
+    log.info("Input queue name: " + queue)
     val queueEnforcerClassName: String = sparkConf.get(QUEUE_ENFORCER_CLASS)
-    log.info("queue enforcer class: " + queueEnforcerClassName)
+
+    if (queueEnforcerClassName == null) {
+      throw new RuntimeException("Queue enforcer class is null.")
+    }
+
     var queueEnforcer: QueueEnforcer = null
     try {queueEnforcer = Utils.classForName(queueEnforcerClassName)
       .newInstance.asInstanceOf[QueueEnforcer]
@@ -251,7 +255,10 @@ private[spark] class Client(
       case e: Throwable =>
         throw new RuntimeException("Couldn't enforce queue. ", e)
     }
-    queueEnforcer.getEnforcedQueue(queue, getInitiator, sparkConf)
+    log.info("queue enforcer class: " + queueEnforcerClassName)
+    val enforcedQueue: String = queueEnforcer.getEnforcedQueue(queue, getInitiator, sparkConf)
+    log.info("Enforced queue name: " + enforcedQueue)
+    enforcedQueue
   }
 
   /**
